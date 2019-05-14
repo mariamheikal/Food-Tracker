@@ -1,0 +1,543 @@
+:-use_module(library(dcg/basics)).
+:-include('info_food.pl').
+:-include('read_sentence.pl').
+
+totalCal(1800).
+
+readInputTillQuit:-
+	write('> Welcome to your personal assistant'),nl,
+        readInputTillQuit1([],[]).
+readInputTillQuit1(PQ,PR):-
+	write('> '),
+	res(L),
+	option(L,PQ,PR).
+
+option(X,PQ,PR):-
+	X=[H|_],
+	H\=quit,
+	append(Q,[_],X),
+	isValid(Q),
+	response(Q,PQ,PR,R),
+	ws([>|R]),nl,
+	append(PQ,[Q],PQ1),
+	append(PR,[R],PR1),
+	readInputTillQuit1(PQ1,PR1).
+option(X,PQ,PR):-
+	X=[H|_],
+	H\=quit,
+	append(Y,[_],X),
+	\+isValid(Y),
+	write('> I can not understand you'),nl,
+	readInputTillQuit1(PQ,PR).
+option([H|_],PQ,PR):-
+	H=quit,
+	meal(PQ,PR,breakfast,B),
+	meal(PQ,PR,lunch,L),
+	meal(PQ,PR,dinner,D),
+	ws([>|['You',had,B,for,breakfast]]),nl,
+	ws(['You',had,L,for,lunch]),nl,
+	ws(['You',had,D,for,dinner]),nl,
+	ws(['Bye']),nl.
+meal([],[],_,-).
+meal([H1|_],_,M,X):-
+	H1=[i,ate,X,for,M].
+meal([H1|_],[H2|_],M,X):-
+	H1=[can,i,have,X,for,M],
+	H2=['You',can,have,X,for,M].
+meal([H1|T1],[H2|T2],M,R):-
+	(H1\=[can,i,have,X,for,M];
+	H2\=['You',can,have,X,for,M]),
+	H1\=[i,ate,X,for,M],
+	meal(T1,T2,M,R).
+
+
+
+isValid([how,many,calories,does,_,contain]).
+isValid([what,does,_,contain]).
+isValid([can,i,have,_,for,_]).
+isValid([what,is,_]).
+isValid([how,many,calories,do,i,have,left]).
+isValid([what,kind,of,_,does,_,contain]).
+isValid([is,_,a,_,in,_]).
+isValid([what,can,i,have,for,_,that,contains,_]).
+isValid([i,ate,_,for,_]).
+isValid([i,do,not,eat,_]).
+
+
+
+filterProp(Relation,L):-
+	setof((X,Y),prop(X,Relation,Y),L).              % prop(X,Relation,Y,cal))
+
+
+matchFirst(_,[],[]).
+matchFirst(T1,[(T1,Y)|T],[Y-1|Res]):-
+	matchFirst(T1,T,Res).
+matchFirst(T1,[(X,Y)|T],[Y-0|Res]):-
+	T1\=X,
+        matchFirst(T1,T,Res).
+
+matchSecond(_,[],[]).
+matchSecond(T1,[(X,T1)|T],[X-1|Res]):-
+	matchSecond(T1,T,Res).
+matchSecond(T1,[(X,Y)|T],[X-0|Res]):-
+	T1\=Y,
+	matchSecond(T1,T,Res).
+
+mergeMatchLists(ML1,ML2,R):-
+	hlp1(ML1,[],R1),
+	hlp1(ML2,R1,R).
+
+hlp1([],Acc,Acc).
+hlp1([X-Y|T],Acc,R):-
+	add2(X-Y,Acc,R1),
+	hlp1(T,R1,R).
+
+add2(E-Occ,[],[E-Occ]).
+add2(E-Occ ,[E-Y|T],[E-Z|T]):-
+	Z is Y + Occ.
+add2(E-Occ, [X-Y|T],[X-Y|R]):-
+	E\=X,
+	add2(E-Occ ,T,R).
+
+
+bestMatches(ML,BL):-
+	maxScore(ML,R),
+	bestMatchesMin(ML,R,BL).
+
+maxScore([],-1).
+maxScore([_-S|T],S):-
+       maxScore(T,R),
+       S>=R.
+maxScore([_-S|T],R):-
+       maxScore(T,R),
+       S<R.
+
+bestMatchesMin([],_,[]).
+bestMatchesMin([X-Y|T],R,[X|T2]):-
+	Y>=R,
+	bestMatchesMin(T,R,T2).
+bestMatchesMin([_-Y|T],R,T2):-
+	Y<R,
+	bestMatchesMin(T,R,T2).
+
+foodCal(F,C):-
+        prop(F,'contain',C,'cal').
+foodCal(F,C):-
+	\+prop(F,contain,C,cal),
+	setof(X,prop(F,contain,X),L),
+	foodCalList(L,C).
+
+foodCalList([],0).
+foodCalList([H|T],C):-
+        foodCal(H,C1),
+        foodCalList(T,C2),
+        C is C1+C2.
+
+calcCalories(F,PQ,PR,C):-
+        foodCal(F,C1),
+	getFoods(PQ,PR,L),
+	foodCalList(L,C2),
+	C3 is C1+C2,
+	totalCal(X),
+	C is X-C3.
+
+
+getFoods([],[],[]).
+getFoods([H1|T1],[_|T2],[X|L]):-
+	H1=[i,ate,X,for,_],
+	prop(X,contain,_),
+	getFoods(T1,T2,L).
+getFoods([H1|T1],[H2|T2],[X|L]):-
+	H1=[can,i,have,X,for,Y],
+	prop(X,contain,_),
+	H2=['You',can,have,X,for,Y],
+	getFoods(T1,T2,L).
+getFoods([H1|T1],[_|T2],L):-
+	H1=[can,i,have,X,for,_],
+	\+prop(X,contain,_),
+	getFoods(T1,T2,L).
+getFoods([H1|T1],[H2|T2],L):-
+	H1=[can,i,have,X,for,Y],
+	H2\=['You',can,have,X,for,Y],
+	H2\=['I',do,not,know],
+	getFoods(T1,T2,L).
+getFoods([H1|T1],[_|T2],L):-
+	H1\=[can,i,have,_,for,_],
+	H1\=[i,ate,_,for,_],
+        getFoods(T1,T2,L).
+getFoods([H1|_],_,[X]):-
+	H1=[i,ate,X,for,_],
+	\+prop(X,contain,_).
+
+
+
+
+getDiffAnswer(Q,PQ,PR,CR,R):-
+    getUsedRes(Q,PQ,PR,Used),
+    getFirst(CR,Used,R).
+
+getFirst([H1|_],Used,H1):-
+	\+member([H1],Used).
+getFirst([H1|T1],Used,R):-
+	member([H1],Used),
+        getFirst(T1,Used,R).
+
+getUsedRes(_,[],[],[]).
+getUsedRes(Q,[Q|T1],[H2|T2],[H2|R]):-
+    getUsedRes(Q,T1,T2,R).
+getUsedRes(Q,[H1|T1],[_|T2],R):-
+    H1\=Q,
+    getUsedRes(Q,T1,T2,R).
+
+listOrderDesc(LP,OLP):-
+	i_sort(LP,[],OLP).
+
+i_sort([],X,X).
+i_sort([X-Y|T],Accumulator,Sorted):-
+        insert(X-Y,Accumulator,N),
+	i_sort(T,N,Sorted).
+
+insert(X-A,[],[X-A]).
+insert(X-A,[Y-C|T],[Y-C|NT]):- A<C , insert(X-A,T,NT).
+insert(X-A,[Y-C|T],[X-A,Y-C|T]):-A>=C.
+
+
+
+foodFromHistory([],[]).
+foodFromHistory([H|T],[X|FL]):-
+        H=[i,ate,X,for,_],
+	foodFromHistory(T,FL).
+foodFromHistory([H|T],[X|FL]):-
+        H=[you,can,have,X,for,_],
+	foodFromHistory(T,FL).
+foodFromHistory([H|T],FL):-
+	H\=[i,ate,_,for,_],
+	H\=[you,can,have,X,for,_],
+	foodFromHistory(T,FL).
+
+
+
+
+getUnlikedIngredients([],[]).
+getUnlikedIngredients([H|T],[X|FL]):-
+	H=[i,do,not,eat,X],
+	getUnlikedIngredients(T,FL).
+getUnlikedIngredients([H|T],FL):-
+	H\=[i,do,not,eat,_],
+	getUnlikedIngredients(T,FL).
+
+
+hlpCal(PQ,PR,C):-
+	getFoods(PQ,PR,L),
+	foodCalList(L,C2),
+	totalCal(X),
+        C is X-C2 .
+
+%A
+response(Q,_,_,['I',do,not,know]):-
+	Q=[how,many,calories,does,F,contain],
+	\+foodCal(F,_).
+response(Q,PQ,PR,R):-
+	Q=[how,many,calories,does,F,contain],
+	foodCal(F,C),
+	getDiffAnswer(Q,PQ,PR,[[C,'Calories']],R).
+response(Q,PQ,PR,['I',told,you,that,before]):-
+	Q=[how,many,calories,does,F,contain],
+	foodCal(F,C),
+	\+getDiffAnswer(Q,PQ,PR,[[C,'Calories']],_).
+
+%B
+response(Q,_,_,['I',do,not,know]):-
+	Q=[what,does,F,contain],
+	\+prop(F,contain,_).
+response(Q,PQ,PR,['I',told,you,that,before]):-
+	Q=[what,does,F,contain],
+	setof(L,prop(F,contain,L),CR),
+	\+getDiffAnswer(Q,PQ,PR,CR,_).
+response(Q,PQ,PR,[R]):-
+	Q=[what,does,F,contain],
+	setof(L,prop(F,contain,L),CR),
+	getDiffAnswer(Q,PQ,PR,CR,R).
+
+%C
+response(Q,_,_,['I',do,not,know]):-
+        Q=[can,i,have,F,for,M],
+	(\+prop(F,_,_);
+	\+prop(_,not,M)).
+response(Q,PQ,PR,['I',do,not,know]):-
+        Q=[can,i,have,F,for,M],
+	prop(F,_,_),prop(_,not,M),
+        \+prop(F,not,M),
+	\+calcCalories(F,PQ,PR,_).
+response(Q,PQ,PR,['You',can,have,F,for,M]):-
+        Q=[can,i,have,F,for,M],
+	prop(F,_,_),prop(_,not,M),
+	\+prop(F,not,M),
+	calcCalories(F,PQ,PR,C),
+	C>=0.
+response(Q,PQ,PR,['No']):-
+        Q=[can,i,have,F,for,M],
+	prop(F,_,_),prop(_,not,M),
+        \+prop(F,not,M),
+	calcCalories(F,PQ,PR,C),
+	C<0.
+response(Q,_,_,[F,is,not,suitable,for,M]):-
+        Q=[can,i,have,F,for,M],
+	prop(F,_,_),prop(_,not,M),
+        prop(F,not,M).
+
+
+%D
+response(Q,_,_,['I',do,not,know]):-
+	Q=[what,is,F],
+	\+prop(F,is,_).
+response(Q,PQ,PR,['I',told,you,that,before]):-
+	Q=[what,is,F],
+	prop(F,is,_),
+	setof(R,prop(F,is,R),CR),
+	\+getDiffAnswer(Q,PQ,PR,CR,_).
+response(Q,PQ,PR,[L]):-
+	Q=[what,is,F],
+	prop(F,is,_),
+	setof(R,prop(F,is,R),CR),
+	getDiffAnswer(Q,PQ,PR,CR,L).
+
+%E
+response(Q,PQ,PR,['I',do,not,know]):-
+	Q=[how,many,calories,do,i,have,left],
+	\+ hlpCal(PQ,PR,_).
+response(Q,PQ,PR,[C,'Calories']):-
+	Q=[how,many,calories,do,i,have,left],
+	hlpCal(PQ,PR,C).
+
+%F
+response(Q,_,_,['I',do,not,know]) :-
+        Q = [what,kind,of,FC,does,F,contain],
+       ((\+ prop(_,_,FC));
+       (\+prop(F,_,_))).
+
+
+response(Q,_,_,['Nothing',from,what,'I',know]) :-
+	Q = [what,kind,of,FC,does,F,contain],
+	prop(_,_,FC),
+	prop(F,_,_),
+	filterProp(contain,L1),
+	filterProp(is,L2),
+	matchFirst(F,L1,R1),
+	matchSecond(FC,L2,R2),
+	mergeMatchLists(R1,R2,L3),
+	bestMatchesMin(L3,2,CR),
+	length(CR,0).
+
+response(Q,PQ,PR,[R]) :-
+	Q = [what,kind,of,FC,does,F,contain],
+	prop(_,_,FC),
+	prop(F,_,_),
+	filterProp(contain,L1),
+	filterProp(is,L2),
+	matchFirst(F,L1,R1),
+	matchSecond(FC,L2,R2),
+	mergeMatchLists(R1,R2,L3),
+	bestMatchesMin(L3,2,CR),
+	length(CR,N),
+	N >= 1,
+	getDiffAnswer(Q,PQ,PR,CR,R).
+
+response(Q,PQ,PR,['I',told,you,that,before]) :-
+	Q = [what,kind,of,FC,does,F,contain],
+	prop(_,_,FC),
+	prop(F,_,_),
+	filterProp(contain,L1),
+	filterProp(is,L2),
+	matchFirst(F,L1,R1),
+	matchSecond(FC,L2,R2),
+	mergeMatchLists(R1,R2,L3),
+	bestMatchesMin(L3,2,CR),
+	length(CR,N),
+	N >= 1,
+	\+getDiffAnswer(Q,PQ,PR,CR,_).
+
+%G
+response(Q,_,_,['I',do,not,know]):-
+	Q=[is,FI,a,FC,in,FT],
+	(\+prop(FI,_,_);
+	\+prop(FT,_,_);
+	\+prop(_,_,FC)).
+response(Q,_,_,['No']):-
+	Q=[is,FI,a,FC,in,FT],
+        prop(FI,_,_),
+	prop(FT,_,_),
+	prop(_,_,FC),
+	filterProp(contain,L1),
+	filterProp(is,L2),
+	matchFirst(FT,L1,R1),
+        matchSecond(FC,L2,R2),							%matchSecond(FI,L1,R2),
+	mergeMatchLists(R1,R2,R3),
+	bestMatchesMin(R3,2,CR),
+	(length(CR,0);
+	\+member(FI,CR)).
+response(Q,_,_,['Yes']):-
+	Q=[is,FI,a,FC,in,FT],
+	prop(FI,_,_),
+	prop(FT,_,_),
+	prop(_,_,FC),
+	filterProp(contain,L1),
+	filterProp(is,L2),
+	matchFirst(FT,L1,R1),
+        matchSecond(FC,L2,R2),							%matchSecond(FI,L1,R2),
+	mergeMatchLists(R1,R2,R3),
+	bestMatchesMin(R3,2,CR),
+	member(FI,CR).
+
+%h
+response(Q,_,_,['I',do,not,know]):-
+	Q=[what,can,i,have,for,M,that,contains,FI],
+	(\+prop(_,not,M);
+	\+prop(FI,_,_)).
+response(Q,PQ,PR,[D]):-
+	Q=[what,can,i,have,for,M,that,contains,FI],
+	prop(_,not,M),
+	prop(FI,_,_),
+	responseO(Q,PQ,PR,R),
+	bestMatchesMin(R,4,CR),
+	getDiffAnswer(Q,PQ,PR,CR,D).
+response(Q,PQ,PR,['I',told,you,that,before]):-
+	Q=[what,can,i,have,for,M,that,contains,FI],
+	\+(\+prop(_,not,M);
+	\+prop(_,contain,FI)),
+	responseO(Q,PQ,PR,R),
+	bestMatchesMin(R,4,CR),
+	CR\=[],
+	\+getDiffAnswer(Q,PQ,PR,CR,_).
+response(Q,PQ,PR,['Nothing',from,what,'I',know]):-
+	Q=[what,can,i,have,for,M,that,contains,FI],
+	\+(\+prop(_,not,M);
+	\+prop(_,contain,FI)),
+	responseO(Q,PQ,PR,R),
+	bestMatchesMin(R,4,CR),
+	CR=[].
+
+
+response([i,ate,_,for,_],_,_,['Ok']).
+response([i,do,not,eat,_],_,_,['Ok']).
+
+
+
+
+
+responseO(Q,PQ,PR,J):-
+	Q=[what,can,i,have,for,M,that,contains,FI],
+        filterProp(contain,P),
+	matchSecond(FI,P,S),
+	getUnlikedIngredients(PQ,U),
+	incUnl(S,U,Y),
+	incCal(Y,PQ,PR,C),
+	notMeal(M,C,J).
+
+
+incUnl([],_,[]).
+incUnl([E-O|T],U,[E-O1|T1]):-
+	(\+member(E,U),
+	 chk(E,U)),
+	 O1 is O+1,
+	incUnl(T,U,T1).
+incUnl([E-O|T],U,[E-O|T1]):-
+	(member(E,U);\+chk(E,U)),
+	incUnl(T,U,T1).
+chk(FT,Unl):-
+	setof(X,prop(FT,contain,X),L),
+	disjoint(L,Unl).
+disjoint([],_).
+disjoint([H|T],Unl):-
+	\+member(H,Unl),
+	disjoint(T,Unl).
+incCal([],_,_,[]).
+incCal([E-O|T],PQ,PR,[E-O1|T1]):-
+	calcCalories(E,PQ,PR,C),
+	C>=0,
+	O1 is O+1,
+	incCal(T,PQ,PR,T1).
+incCal([E-O|T],PQ,PR,[E-O|T1]):-
+	calcCalories(E,PQ,PR,C),
+	C<0,
+	incCal(T,PQ,PR,T1).
+notMeal(_,[],[]).
+notMeal(M,[E-O|T],[E-O1|T1]):-
+	\+prop(E,not,M),
+	O1 is O + 1 ,
+	notMeal(M,T,T1).
+notMeal(M,[E-O|T],[E-O|T1]):-
+	prop(E,not,M),
+	notMeal(M,T,T1).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
